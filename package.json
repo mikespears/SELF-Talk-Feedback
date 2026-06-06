@@ -1,0 +1,26 @@
+{
+  "name": "self-talk-feedback",
+  "version": "1.0.0",
+  "description": "MQTT vote capture and Pretalx schedule matching for SELF conference",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "sync-schedule": "node src/cli/sync-schedule.js",
+    "seed-staff": "node src/cli/seed-staff.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "better-sqlite3": "^11.9.1",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "express-session": "^1.18.1",
+    "mqtt": "^5.13.0",
+    "uuid": "^11.1.0"
+  }
+}
