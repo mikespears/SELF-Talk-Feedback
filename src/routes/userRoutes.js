@@ -22,6 +22,10 @@ function redirectWithMessage(res, path, { error, success }) {
   res.redirect(query ? `${path}?${query}` : path);
 }
 
+function csrf(req) {
+  return req.csrfField ?? '';
+}
+
 router.get('/', (req, res) => {
   const users = listStaffUsers();
   const error = req.query.error ? String(req.query.error) : '';
@@ -37,6 +41,7 @@ router.get('/', (req, res) => {
           <details class="action-details">
             <summary class="btn btn-small">Change password</summary>
             <form method="post" action="/staff/users/${user.id}/password" class="stack-form compact-form">
+              ${csrf(req)}
               <label>
                 New password
                 <input type="password" name="password" required minlength="8" autocomplete="new-password">
@@ -47,6 +52,7 @@ router.get('/', (req, res) => {
           <details class="action-details">
             <summary class="btn btn-small">Rename</summary>
             <form method="post" action="/staff/users/${user.id}/rename" class="stack-form compact-form">
+              ${csrf(req)}
               <label>
                 Username
                 <input type="text" name="username" required minlength="3" maxlength="32"
@@ -60,6 +66,7 @@ router.get('/', (req, res) => {
               ? ''
               : `<form method="post" action="/staff/users/${user.id}/delete" class="inline-form"
                       onsubmit="return confirm('Delete ${escapeHtml(user.username)}?');">
+                   ${csrf(req)}
                    <button type="submit" class="btn btn-small btn-danger">Delete</button>
                  </form>`
           }
@@ -83,6 +90,7 @@ router.get('/', (req, res) => {
       <div class="panel">
         <h2>Add user</h2>
         <form method="post" action="/staff/users" class="stack-form">
+          ${csrf(req)}
           <label>
             Username
             <input type="text" name="username" required minlength="3" maxlength="32" autocomplete="off">
@@ -100,6 +108,7 @@ router.get('/', (req, res) => {
         <details class="action-details">
           <summary class="btn btn-secondary">Change my password</summary>
           <form method="post" action="/staff/users/${req.session.staffUser.id}/password" class="stack-form compact-form">
+            ${csrf(req)}
             <label>
               New password
               <input type="password" name="password" required minlength="8" autocomplete="new-password">
@@ -121,7 +130,13 @@ router.get('/', (req, res) => {
     </section>`;
 
   res.type('html').send(
-    layout({ title: 'Staff users', body, staffUser: req.session.staffUser, activeNav: 'users' }),
+    layout({
+      title: 'Staff users',
+      body,
+      staffUser: req.session.staffUser,
+      activeNav: 'users',
+      csrfField: req.csrfField,
+    }),
   );
 });
 

@@ -2,7 +2,7 @@ import express from 'express';
 import { requireStaff } from '../auth.js';
 import { getMeta } from '../db.js';
 import { getMqttStatus } from '../mqttClient.js';
-import { syncScheduleFromPretalx, getScheduleStats, listScheduleSlots } from '../pretalx.js';
+import { syncScheduleFromPretalx, getScheduleStats, listScheduleSlots, getSlotById } from '../pretalx.js';
 import {
   buildStaffReportData,
   buildSpeakerReportData,
@@ -19,15 +19,29 @@ import {
 } from '../voteService.js';
 import { escapeHtml, formatDateTime, layout, parseSpeakers, voteBar } from '../views.js';
 import { ROOM_MAP } from '../config.js';
+import { requireCsrf } from '../security.js';
 import userRoutes from './userRoutes.js';
-import mqttRoutes from './mqttRoutes.js';
-import pretalxRoutes from './pretalxRoutes.js';
+import settingsRoutes from './settingsRoutes.js';
 
 const router = express.Router();
 router.use(requireStaff);
+router.use((req, res, next) => {
+  if (req.method === 'POST') {
+    requireCsrf(req, res, next);
+    return;
+  }
+  next();
+});
 router.use('/users', userRoutes);
-router.use('/mqtt', mqttRoutes);
-router.use('/pretalx', pretalxRoutes);
+router.use('/settings', settingsRoutes);
+
+router.get('/mqtt', (req, res) => {
+  res.redirect(301, '/staff/settings#mqtt');
+});
+
+router.get('/pretalx', (req, res) => {
+  res.redirect(301, '/staff/settings#pretalx');
+});
 
 router.get('/', (req, res) => {
   const live = getLiveRoomStats();
@@ -70,9 +84,9 @@ router.get('/', (req, res) => {
       </div>
       <div class="btn-row">
         <a href="/staff/users" class="btn btn-secondary">Manage users</a>
-        <a href="/staff/mqtt" class="btn btn-secondary">MQTT settings</a>
-        <a href="/staff/pretalx" class="btn btn-secondary">Pretalx settings</a>
+        <a href="/staff/settings" class="btn btn-secondary">Settings</a>
         <form method="post" action="/staff/sync-schedule">
+          ${req.csrfField}
           <button type="submit" class="btn btn-secondary">Sync Pretalx schedule</button>
         </form>
       </div>
@@ -104,7 +118,13 @@ router.get('/', (req, res) => {
     <script src="/js/live.js"></script>`;
 
   res.type('html').send(
-    layout({ title: 'Live dashboard', body, staffUser: req.session.staffUser, activeNav: 'live' }),
+    layout({
+      title: 'Live dashboard',
+      body,
+      staffUser: req.session.staffUser,
+      activeNav: 'live',
+      csrfField: req.csrfField,
+    }),
   );
 });
 
@@ -119,6 +139,7 @@ router.post('/sync-schedule', async (req, res) => {
         body: `<p class="error">Schedule sync failed: ${escapeHtml(err.message)}</p>
                <p><a href="/staff">Back to dashboard</a></p>`,
         staffUser: req.session.staffUser,
+        csrfField: req.csrfField,
       }),
     );
   }
@@ -147,6 +168,7 @@ router.get('/schedule', (req, res) => {
     <section class="toolbar">
       <h1>Schedule</h1>
       <form method="post" action="/staff/sync-schedule">
+        ${req.csrfField}
         <button type="submit" class="btn btn-secondary">Refresh from Pretalx</button>
       </form>
     </section>
@@ -162,7 +184,13 @@ router.get('/schedule', (req, res) => {
     </div>`;
 
   res.type('html').send(
-    layout({ title: 'Schedule', body, staffUser: req.session.staffUser, activeNav: 'schedule' }),
+    layout({
+      title: 'Schedule',
+      body,
+      staffUser: req.session.staffUser,
+      activeNav: 'schedule',
+      csrfField: req.csrfField,
+    }),
   );
 });
 
@@ -187,6 +215,7 @@ router.get('/reports', (req, res) => {
         <td>${rate === null ? '—' : `${rate}%`}</td>
         <td>
           <form method="post" action="/staff/reports/speaker-link" class="inline-form">
+            ${req.csrfField}
             <input type="hidden" name="slot_id" value="${row.slot_id}">
             <input type="hidden" name="submission_code" value="${escapeHtml(row.submission_code)}">
             <button type="submit" class="btn btn-small">Create speaker link</button>
@@ -204,6 +233,7 @@ router.get('/reports', (req, res) => {
         <td><code>/report/${escapeHtml(token.token)}</code></td>
         <td>
           <form method="post" action="/staff/reports/revoke" class="inline-form">
+            ${req.csrfField}
             <input type="hidden" name="token" value="${escapeHtml(token.token)}">
             <button type="submit" class="btn btn-small btn-danger">Revoke</button>
           </form>
@@ -255,13 +285,24 @@ router.get('/reports', (req, res) => {
     </section>`;
 
   res.type('html').send(
-    layout({ title: 'Reports', body, staffUser: req.session.staffUser, activeNav: 'reports' }),
+    layout({
+      title: 'Reports',
+      body,
+      staffUser: req.session.staffUser,
+      activeNav: 'reports',
+      csrfField: req.csrfField,
+    }),
   );
 });
 
 router.post('/reports/speaker-link', express.urlencoded({ extended: false }), (req, res) => {
   const slotId = Number(req.body.slot_id);
   const submissionCode = req.body.submission_code;
+  const slot = getSlotById(slotId);
+  if (!slot || slot.submission_code !== submissionCode) {
+    res.redirect('/staff/reports?error=invalid-slot');
+    return;
+  }
   const token = createSpeakerReportToken({
     slotId,
     submissionCode,
@@ -341,7 +382,13 @@ router.get('/reports/staff.html', (req, res) => {
     <p><a href="/staff/reports">Back to reports</a></p>`;
 
   res.type('html').send(
-    layout({ title: 'Staff event report', body, staffUser: req.session.staffUser, activeNav: 'reports' }),
+    layout({
+      title: 'Staff event report',
+      body,
+      staffUser: req.session.staffUser,
+      activeNav: 'reports',
+      csrfField: req.csrfField,
+    }),
   );
 });
 

@@ -37,19 +37,17 @@ npm start
 
 Open http://localhost:3847 and sign in with the credentials from `.env`.
 
-On first start the app syncs the Pretalx schedule automatically. Use **Pretalx** in the nav or **Sync Pretalx schedule** on the dashboard to refresh manually.
+On first start the app syncs the Pretalx schedule automatically. Use **Settings** in the nav or **Sync Pretalx schedule** on the dashboard to refresh manually.
 
-## Pretalx
+## Settings
 
-Configure the schedule source from the staff UI at **Pretalx** (`/staff/pretalx`): base URL, event slug, and auto-sync interval. Use **Test connection**, **Save and sync**, or **Sync schedule now** to verify and pull the latest talks.
+Configure MQTT and Pretalx from the staff UI at **Settings** (`/staff/settings`).
+
+**MQTT:** broker URL, credentials, topic prefix, reconnect interval. Saving reconnects the listener.
+
+**Pretalx:** base URL, event slug, auto-sync interval in minutes. Use **Test connection**, **Save and sync**, or **Sync schedule now** to verify and pull talks.
 
 On first startup, defaults are taken from `.env` (if present) and stored in the database. After that, use the UI.
-
-## MQTT
-
-Configure the broker from the staff UI at **MQTT** (`/staff/mqtt`): broker URL, credentials, topic prefix, and reconnect interval. Saving reconnects the listener immediately.
-
-On first startup, defaults are taken from `.env` (if present) and stored in the database. After that, use the UI — `.env` MQTT values are not re-read unless you clear the saved settings.
 
 Example publish (mosquitto):
 
@@ -61,8 +59,7 @@ mosquitto_pub -h localhost -t vote/B -m pos
 
 - **Staff**: `/staff/reports` — summary table, CSV download, full HTML report with unmatched votes
 - **Users**: `/staff/users` — add staff accounts, reset passwords, rename, delete
-- **MQTT**: `/staff/mqtt` — broker URL, credentials, topic prefix
-- **Pretalx**: `/staff/pretalx` — instance URL, event slug, sync interval
+- **Settings**: `/staff/settings` — MQTT broker and Pretalx schedule configuration
 - **Speaker**: staff clicks **Create speaker link** for a talk; share `/report/{token}` with the speaker (no login required)
 
 ## Scripts

@@ -264,6 +264,49 @@ input[type="password"] {
 
 .footnote { margin-top: 2rem; font-size: 0.9rem; }
 
+.settings-section {
+  margin-bottom: 1.5rem;
+}
+
+.settings-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.settings-section-header h2 {
+  margin-bottom: 0.25rem;
+}
+
+.settings-section h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.section-jumps {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.section-jumps a {
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.section-jumps a:hover {
+  text-decoration: none;
+  background: var(--border);
+}
+
+.status-grid.compact {
+  margin-bottom: 1rem;
+}
+
 .banner {
   padding: 0.75rem 1rem;
   border-radius: 8px;

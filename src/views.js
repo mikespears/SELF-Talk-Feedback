@@ -28,15 +28,14 @@ export function parseSpeakers(json) {
   }
 }
 
-export function layout({ title, body, staffUser, activeNav }) {
+export function layout({ title, body, staffUser, activeNav, csrfField = '' }) {
   const navItems = staffUser
     ? [
         { href: '/staff', label: 'Live', key: 'live' },
         { href: '/staff/reports', label: 'Reports', key: 'reports' },
         { href: '/staff/schedule', label: 'Schedule', key: 'schedule' },
         { href: '/staff/users', label: 'Users', key: 'users' },
-        { href: '/staff/mqtt', label: 'MQTT', key: 'mqtt' },
-        { href: '/staff/pretalx', label: 'Pretalx', key: 'pretalx' },
+        { href: '/staff/settings', label: 'Settings', key: 'settings' },
       ]
     : [];
 
@@ -67,6 +66,7 @@ export function layout({ title, body, staffUser, activeNav }) {
         staffUser
           ? `<span class="user">${escapeHtml(staffUser.username)}</span>
              <form method="post" action="/logout" class="inline-form">
+               ${csrfField}
                <button type="submit" class="btn btn-secondary">Log out</button>
              </form>`
           : ''

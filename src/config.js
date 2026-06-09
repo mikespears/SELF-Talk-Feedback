@@ -19,6 +19,7 @@ export const VALID_VOTE_TYPES = ['natural', 'pos', 'neg'];
 
 export const config = {
   port: Number(process.env.PORT || 3847),
+  bindHost: process.env.BIND_HOST || '0.0.0.0',
   sessionSecret: process.env.SESSION_SECRET || 'dev-insecure-secret-change-me',
   databasePath: process.env.DATABASE_PATH
     ? path.resolve(rootDir, process.env.DATABASE_PATH)
@@ -30,6 +31,17 @@ export const config = {
   publicDir: path.join(rootDir, 'public'),
   viewsDir: path.join(rootDir, 'views'),
 };
+
+/** Secure cookies behind NPM: 'auto' uses X-Forwarded-Proto when trust proxy is set. */
+export function resolveCookieSecure() {
+  if (process.env.COOKIE_SECURE === 'true') {
+    return true;
+  }
+  if (process.env.COOKIE_SECURE === 'false') {
+    return false;
+  }
+  return process.env.NODE_ENV === 'production' ? 'auto' : false;
+}
 
 export function roomKeyFromTopic(topic, topicPrefix = 'vote/') {
   const prefix = topicPrefix;

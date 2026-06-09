@@ -1,13 +1,41 @@
 import { getMeta, setMeta } from './db.js';
+import { assertSafePretalxUrl } from './security.js';
 
 const META_KEY = 'pretalx_settings';
+
+const MIN_SYNC_MINUTES = 1;
+const MAX_SYNC_MINUTES = 1_440;
+
+function envSyncIntervalMs() {
+  if (process.env.SCHEDULE_SYNC_INTERVAL_MINUTES) {
+    return Number(process.env.SCHEDULE_SYNC_INTERVAL_MINUTES) * 60_000;
+  }
+  if (process.env.SCHEDULE_SYNC_INTERVAL_MS) {
+    return Number(process.env.SCHEDULE_SYNC_INTERVAL_MS);
+  }
+  return 60 * 60_000;
+}
 
 function envDefaults() {
   return {
     baseUrl: (process.env.PRETALX_BASE_URL || 'https://speakers.southeastlinuxfest.org').replace(/\/$/, ''),
     eventSlug: process.env.PRETALX_EVENT_SLUG || 'southeast-linux-fest-2026',
-    scheduleSyncIntervalMs: Number(process.env.SCHEDULE_SYNC_INTERVAL_MS || 3_600_000),
+    scheduleSyncIntervalMs: envSyncIntervalMs(),
   };
+}
+
+function syncIntervalMsFromInput(raw, fallbackMs) {
+  if (raw?.scheduleSyncIntervalMinutes != null && raw.scheduleSyncIntervalMinutes !== '') {
+    return Number(raw.scheduleSyncIntervalMinutes) * 60_000;
+  }
+  if (raw?.scheduleSyncIntervalMs != null && raw.scheduleSyncIntervalMs !== '') {
+    return Number(raw.scheduleSyncIntervalMs);
+  }
+  return fallbackMs;
+}
+
+function syncIntervalMinutesFromMs(ms) {
+  return Math.round(ms / 60_000);
 }
 
 function normalizeBaseUrl(url) {
@@ -23,7 +51,7 @@ function normalizeSettings(raw) {
   return {
     baseUrl: normalizeBaseUrl(raw.baseUrl ?? defaults.baseUrl),
     eventSlug: String(raw.eventSlug ?? defaults.eventSlug).trim(),
-    scheduleSyncIntervalMs: Number(raw.scheduleSyncIntervalMs ?? defaults.scheduleSyncIntervalMs),
+    scheduleSyncIntervalMs: syncIntervalMsFromInput(raw, defaults.scheduleSyncIntervalMs),
   };
 }
 
@@ -39,12 +67,19 @@ export function validatePretalxSettings(input) {
     errors.push('Event slug may only contain letters, numbers, and hyphens.');
   }
 
+  try {
+    assertSafePretalxUrl(settings.baseUrl);
+  } catch (err) {
+    errors.push(err.message);
+  }
+
+  const syncMinutes = syncIntervalMinutesFromMs(settings.scheduleSyncIntervalMs);
   if (
     !Number.isFinite(settings.scheduleSyncIntervalMs) ||
-    settings.scheduleSyncIntervalMs < 60_000 ||
-    settings.scheduleSyncIntervalMs > 86_400_000
+    syncMinutes < MIN_SYNC_MINUTES ||
+    syncMinutes > MAX_SYNC_MINUTES
   ) {
-    errors.push('Sync interval must be between 60000 ms (1 min) and 86400000 ms (24 hr).');
+    errors.push(`Sync interval must be between ${MIN_SYNC_MINUTES} and ${MAX_SYNC_MINUTES} minutes.`);
   }
 
   return { ok: errors.length === 0, errors, settings };
@@ -68,7 +103,7 @@ export function getPretalxSettingsForDisplay() {
   return {
     baseUrl: settings.baseUrl,
     eventSlug: settings.eventSlug,
-    scheduleSyncIntervalMs: settings.scheduleSyncIntervalMs,
+    scheduleSyncIntervalMinutes: syncIntervalMinutesFromMs(settings.scheduleSyncIntervalMs),
     scheduleUrl: `${settings.baseUrl}/${settings.eventSlug}/schedule/`,
     submissionsApiUrl: buildSubmissionsApiUrl(settings),
   };
@@ -101,7 +136,7 @@ export function seedPretalxSettingsFromEnvIfMissing() {
 
 export async function testPretalxConnection(settings = getPretalxSettings()) {
   const url = `${settings.baseUrl}/api/events/${settings.eventSlug}/rooms/`;
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
   if (!response.ok) {
     throw new Error(`Pretalx API error ${response.status}: ${response.statusText}`);
   }

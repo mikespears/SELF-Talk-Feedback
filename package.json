@@ -19,8 +19,11 @@
     "better-sqlite3": "^11.9.1",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.5.2",
     "express-session": "^1.18.1",
+    "helmet": "^8.2.0",
     "mqtt": "^5.13.0",
+    "ssh2": "^1.17.0",
     "uuid": "^11.1.0"
   }
 }

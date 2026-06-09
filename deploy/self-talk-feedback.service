@@ -1,0 +1,18 @@
+[Unit]
+Description=SELF Talk Feedback
+After=network.target
+
+[Service]
+Type=simple
+User=self-talk-feedback
+Group=self-talk-feedback
+WorkingDirectory=/opt/self-talk-feedback
+Environment=NODE_ENV=production
+EnvironmentFile=-/opt/self-talk-feedback/.env
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

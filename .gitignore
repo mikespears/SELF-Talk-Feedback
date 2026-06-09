@@ -1,6 +1,9 @@
 node_modules/
 data/
 .env
+deploy-credentials.local.txt
+scripts/deploy.env
+scripts/node_modules/
 *.db
 *.db-journal
 .DS_Store

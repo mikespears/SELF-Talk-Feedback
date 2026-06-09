@@ -1,8 +1,30 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { verifyStaffCredentials } from '../auth.js';
+import { safeRedirectPath, requireCsrf, getCsrfToken } from '../security.js';
 import { escapeHtml, layout } from '../views.js';
 
 const router = express.Router();
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many login attempts. Try again later.',
+});
+
+function loginErrorMessage(code) {
+  switch (code) {
+    case 'csrf':
+      return 'Your session expired. Refresh the page and try again.';
+    case 'session':
+      return 'Could not start a session. Try again or contact staff.';
+    case '1':
+    default:
+      return 'Invalid username or password.';
+  }
+}
 
 router.get('/login', (req, res) => {
   if (req.session?.staffUser) {
@@ -10,15 +32,18 @@ router.get('/login', (req, res) => {
     return;
   }
 
-  const next = req.query.next || '/staff';
-  const error = req.query.error === '1';
+  getCsrfToken(req);
+  const next = safeRedirectPath(req.query.next, '/staff');
+  const errorCode = req.query.error ? String(req.query.error) : '';
+  const errorMsg = errorCode ? loginErrorMessage(errorCode) : '';
 
   const body = `
     <section class="panel narrow">
       <h1>Staff login</h1>
       <p class="muted">Sign in to view live votes and generate reports.</p>
-      ${error ? '<p class="error">Invalid username or password.</p>' : ''}
+      ${errorMsg ? `<p class="error">${escapeHtml(errorMsg)}</p>` : ''}
       <form method="post" action="/login" class="stack-form">
+        ${req.csrfField}
         <input type="hidden" name="next" value="${escapeHtml(next)}">
         <label>
           Username
@@ -35,7 +60,7 @@ router.get('/login', (req, res) => {
   res.type('html').send(layout({ title: 'Staff login', body }));
 });
 
-router.post('/login', express.urlencoded({ extended: false }), (req, res) => {
+router.post('/login', loginLimiter, requireCsrf, express.urlencoded({ extended: false }), (req, res) => {
   const { username, password, next } = req.body;
   const user = verifyStaffCredentials(username, password);
 
@@ -44,11 +69,28 @@ router.post('/login', express.urlencoded({ extended: false }), (req, res) => {
     return;
   }
 
-  req.session.staffUser = user;
-  res.redirect(next && next.startsWith('/') ? next : '/staff');
+  const redirectTo = safeRedirectPath(next, '/staff');
+  req.session.regenerate((err) => {
+    if (err) {
+      console.error('session regenerate failed:', err);
+      res.redirect('/login?error=session');
+      return;
+    }
+
+    getCsrfToken(req);
+    req.session.staffUser = user;
+    req.session.save((saveErr) => {
+      if (saveErr) {
+        console.error('session save failed:', saveErr);
+        res.redirect('/login?error=session');
+        return;
+      }
+      res.redirect(redirectTo);
+    });
+  });
 });
 
-router.post('/logout', (req, res) => {
+router.post('/logout', requireCsrf, (req, res) => {
   req.session.destroy(() => {
     res.redirect('/login');
   });

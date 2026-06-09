@@ -12,24 +12,86 @@ function envDefaults() {
   };
 }
 
+function normalizeTopicPrefix(prefix) {
+  const value = String(prefix ?? 'vote/').trim();
+  return value.endsWith('/') ? value : `${value}/`;
+}
+
+/** Bracket bare IPv6 hosts so mqtt:// and the Node URL parser work correctly. */
+export function normalizeMqttUrl(input) {
+  let url = String(input ?? '').trim();
+  if (!url) {
+    return url;
+  }
+
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) {
+    const looksLikeHost = url.startsWith('[')
+      || url.includes('.')
+      || /:[0-9a-f]/i.test(url);
+    if (looksLikeHost) {
+      url = `mqtt://${url}`;
+    }
+  }
+
+  const match = url.match(/^(mqtts?:\/\/|wss?:\/\/)(.+)$/i);
+  if (!match) {
+    return url;
+  }
+
+  const scheme = match[1];
+  let rest = match[2];
+
+  const extra = rest.match(/^([^/?#]+)(.*)$/);
+  if (!extra) {
+    return url;
+  }
+  rest = extra[1];
+  const suffix = extra[2];
+
+  if (rest.startsWith('[')) {
+    return `${scheme}${rest}${suffix}`;
+  }
+
+  if (!rest.includes(':')) {
+    return `${scheme}${rest}${suffix}`;
+  }
+
+  const parts = rest.split(':');
+  const last = parts[parts.length - 1];
+  const hasNumericPort = /^\d+$/.test(last) && parts.length > 2;
+
+  if (hasNumericPort) {
+    const port = last;
+    const host = parts.slice(0, -1).join(':');
+    if (/^[0-9a-f:]+$/i.test(host) && host.includes(':')) {
+      return `${scheme}[${host}]:${port}${suffix}`;
+    }
+    return `${scheme}${rest}${suffix}`;
+  }
+
+  if (/^[0-9a-f:]+$/i.test(rest) && parts.length >= 3) {
+    return `${scheme}[${rest}]${suffix}`;
+  }
+
+  return `${scheme}${rest}${suffix}`;
+}
+
 function normalizeSettings(raw) {
   const defaults = envDefaults();
   if (!raw) {
-    return { ...defaults };
+    return {
+      ...defaults,
+      url: normalizeMqttUrl(defaults.url),
+    };
   }
 
   return {
-    url: String(raw.url ?? defaults.url).trim(),
+    url: normalizeMqttUrl(String(raw.url ?? defaults.url).trim()),
     username: String(raw.username ?? defaults.username).trim(),
     password: raw.password != null ? String(raw.password) : defaults.password,
     topicPrefix: normalizeTopicPrefix(raw.topicPrefix ?? defaults.topicPrefix),
     reconnectMs: Number(raw.reconnectMs ?? defaults.reconnectMs),
   };
-}
-
-function normalizeTopicPrefix(prefix) {
-  const value = String(prefix ?? 'vote/').trim();
-  return value.endsWith('/') ? value : `${value}/`;
 }
 
 export function validateMqttSettings(input) {
@@ -101,7 +163,7 @@ export function seedMqttSettingsFromEnvIfMissing() {
     return false;
   }
 
-  const defaults = envDefaults();
+  const defaults = normalizeSettings(null);
   setMeta(META_KEY, JSON.stringify(defaults));
   return true;
 }

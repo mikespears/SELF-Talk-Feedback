@@ -1,7 +1,32 @@
 import { ROOM_MAP } from './config.js';
 import { getDb, setMeta } from './db.js';
 import { buildSubmissionsApiUrl } from './pretalxSettings.js';
+import { assertSafePretalxUrl } from './security.js';
 import { toUtcIso } from './time.js';
+
+const FETCH_TIMEOUT_MS = 30_000;
+
+async function fetchJson(url) {
+  assertSafePretalxUrl(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  if (!response.ok) {
+    throw new Error(`Pretalx API error ${response.status}: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+async function fetchAllSubmissions() {
+  const results = [];
+  let url = buildSubmissionsApiUrl();
+  while (url) {
+    const data = await fetchJson(url);
+    results.push(...data.results);
+    url = data.next;
+  }
+
+  return results;
+}
+
 function roomKeyFromPretalxRoomId(roomId) {
   for (const [key, info] of Object.entries(ROOM_MAP)) {
     if (info.pretalxRoomId === roomId) {
@@ -9,22 +34,6 @@ function roomKeyFromPretalxRoomId(roomId) {
     }
   }
   return null;
-}
-
-async function fetchAllSubmissions() {
-  const results = [];
-  let url = buildSubmissionsApiUrl();
-  while (url) {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Pretalx API error ${response.status}: ${response.statusText}`);
-    }
-    const data = await response.json();
-    results.push(...data.results);
-    url = data.next;
-  }
-
-  return results;
 }
 
 export async function syncScheduleFromPretalx() {

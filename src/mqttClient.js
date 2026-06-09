@@ -31,9 +31,9 @@ function buildConnectOptions(settings) {
     connectTimeout: 30_000,
   };
 
-  if (settings.username) {
+  if (settings.username || settings.password) {
     options.username = settings.username;
-    options.password = settings.password;
+    options.password = settings.password ?? '';
   }
 
   return options;

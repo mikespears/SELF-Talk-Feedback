@@ -2,6 +2,8 @@ import bcrypt from 'bcryptjs';
 import { config } from './config.js';
 import { getDb } from './db.js';
 
+const DUMMY_BCRYPT_HASH = bcrypt.hashSync('invalid-login-attempt', 12);
+
 export function ensureStaffUser() {
   const db = getDb();
   const existing = db.prepare('SELECT id FROM staff_users WHERE username = ?').get(config.staffUsername);
@@ -22,12 +24,13 @@ export function verifyStaffCredentials(username, password) {
     .prepare('SELECT id, username, password_hash FROM staff_users WHERE username = ?')
     .get(username);
 
-  if (!row) {
+  const hash = row?.password_hash ?? DUMMY_BCRYPT_HASH;
+  const valid = bcrypt.compareSync(password, hash);
+  if (!row || !valid) {
     return null;
   }
 
-  const valid = bcrypt.compareSync(password, row.password_hash);
-  return valid ? { id: row.id, username: row.username } : null;
+  return { id: row.id, username: row.username };
 }
 
 export function requireStaff(req, res, next) {

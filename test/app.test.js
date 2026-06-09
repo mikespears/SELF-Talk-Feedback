@@ -10,6 +10,7 @@ import { positiveRate, summaryToCsv } from '../src/reports.js';
 import {
   getMqttSettings,
   getMqttSettingsForDisplay,
+  normalizeMqttUrl,
   saveMqttSettings,
 } from '../src/mqttSettings.js';
 import {
@@ -26,6 +27,7 @@ import {
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'self-feedback-test-'));
 process.env.DATABASE_PATH = path.join(tmpDir, 'test.db');
+process.env.PRETALX_ALLOWED_HOSTS = 'speakers.example.org,speakers.southeastlinuxfest.org';
 
 describe('config helpers', () => {
   it('maps vote topics to room keys', () => {
@@ -116,6 +118,25 @@ describe('staff users', () => {
 });
 
 describe('mqtt settings', () => {
+  it('normalizes IPv6 broker URLs', () => {
+    assert.equal(
+      normalizeMqttUrl('2605:7b80:63:2:be24:11ff:fe36:63a2:1883'),
+      'mqtt://[2605:7b80:63:2:be24:11ff:fe36:63a2]:1883',
+    );
+    assert.equal(
+      normalizeMqttUrl('mqtt://2605:7b80:63:2:be24:11ff:fe36:63a2:1883'),
+      'mqtt://[2605:7b80:63:2:be24:11ff:fe36:63a2]:1883',
+    );
+    assert.equal(
+      normalizeMqttUrl('mqtt://[2605:7b80:63:2:be24:11ff:fe36:63a2]:1883'),
+      'mqtt://[2605:7b80:63:2:be24:11ff:fe36:63a2]:1883',
+    );
+    assert.equal(
+      normalizeMqttUrl('mqtt://broker.example.com:1883'),
+      'mqtt://broker.example.com:1883',
+    );
+  });
+
   it('validates and persists settings', () => {
     const bad = saveMqttSettings({ url: 'not-a-url', topicPrefix: 'vote/', reconnectMs: 5000 });
     assert.equal(bad.ok, false);
@@ -141,20 +162,34 @@ describe('mqtt settings', () => {
     assert.equal(kept.ok, true);
     assert.equal(getMqttSettings().password, 'secret123');
     assert.equal(getMqttSettingsForDisplay().hasPassword, true);
+
+    const ipv6 = saveMqttSettings({
+      url: '2605:7b80:63:2:be24:11ff:fe36:63a2:1883',
+      username: '',
+      password: '',
+      topicPrefix: 'vote/',
+      reconnectMs: 5000,
+    }, { keepPasswordIfBlank: true });
+    assert.equal(ipv6.ok, true);
+    assert.equal(
+      getMqttSettings().url,
+      'mqtt://[2605:7b80:63:2:be24:11ff:fe36:63a2]:1883',
+    );
   });
 });
 
 describe('pretalx settings', () => {
   it('validates and builds api urls', () => {
-    const bad = savePretalxSettings({ baseUrl: 'ftp://bad', eventSlug: 'ok', scheduleSyncIntervalMs: 3600000 });
+    const bad = savePretalxSettings({ baseUrl: 'ftp://bad', eventSlug: 'ok', scheduleSyncIntervalMinutes: 60 });
     assert.equal(bad.ok, false);
 
     const saved = savePretalxSettings({
       baseUrl: 'https://speakers.example.org/',
       eventSlug: 'my-event-2026',
-      scheduleSyncIntervalMs: 3_600_000,
+      scheduleSyncIntervalMinutes: 60,
     });
     assert.equal(saved.ok, true);
+    assert.equal(getPretalxSettings().scheduleSyncIntervalMs, 3_600_000);
     assert.equal(getPretalxSettings().baseUrl, 'https://speakers.example.org');
     assert.match(
       buildSubmissionsApiUrl(),
