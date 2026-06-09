@@ -1,11 +1,11 @@
 # SELF Talk Feedback
 
-Web tool for **SouthEast Linux Fest 2026** that listens for audience vote buttons over MQTT, matches votes to the active Pretalx talk in each ballroom, and generates staff and speaker reports.
+Web tool for **SouthEast Linux Fest** that listens for audience vote buttons over MQTT, matches votes to the active Pretalx talk in each ballroom, and generates staff and speaker reports.
 
 ## Features
 
 - MQTT subscription on `vote/A`, `vote/B`, `vote/C`, `vote/D` with payloads `natural`, `pos`, or `neg`
-- Automatic Pretalx schedule sync from [SELF 2026 schedule](https://speakers.southeastlinuxfest.org/southeast-linux-fest-2026/schedule/)
+- Automatic Pretalx schedule sync from [SELF schedule](https://speakers.southeastlinuxfest.org/southeast-linux-fest-2026/schedule/)
 - Time-based vote-to-talk matching per room
 - Staff authentication (session login)
 - Staff user management (create, rename, reset password, delete)
@@ -80,6 +80,19 @@ mosquitto_pub -h localhost -t vote/B -m pos
 ## Production notes
 
 - Set strong `SESSION_SECRET` and `STAFF_PASSWORD`
-- Run behind HTTPS (set `NODE_ENV=production` for secure cookies)
+- Run behind HTTPS (reverse proxy with `X-Forwarded-Proto`)
 - Back up `data/feedback.db` during the event
 - Lounge and classroom rooms are excluded from MQTT mapping by design
+
+### Deploy to AlmaLinux
+
+On the server:
+
+```bash
+git clone https://github.com/mikespears/SELF-Talk-Feedback.git /opt/self-talk-feedback
+cd /opt/self-talk-feedback
+cp .env.example .env   # edit secrets
+bash deploy/install.sh
+```
+
+From a workstation (optional): copy `scripts/deploy.env.example` to `scripts/deploy.env`, then run `node scripts/deploy-remote.mjs`.
