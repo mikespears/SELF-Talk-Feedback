@@ -25,7 +25,7 @@ import {
 } from '../uptimeSensor.js';
 import { escapeHtml, formatDateTime, layout, parseSpeakers, voteBar, voteTypeLabel } from '../views.js';
 import { ROOM_MAP } from '../config.js';
-import { requireCsrf } from '../security.js';
+import { getCsrfToken, requireCsrf } from '../security.js';
 import userRoutes from './userRoutes.js';
 import settingsRoutes from './settingsRoutes.js';
 
@@ -196,7 +196,7 @@ router.get('/', (req, res) => {
       </div>
     </section>
 
-    <script>window.__LIVE_CSRF__ = ${JSON.stringify(req.session.csrfToken ?? '')};</script>
+    <input type="hidden" id="live-csrf" value="${escapeHtml(getCsrfToken(req))}">
     <script src="/js/live.js"></script>`;
 
   res.type('html').send(
@@ -493,6 +493,7 @@ router.get('/api/live', (req, res) => {
     lastScheduleSync: getMeta('last_schedule_sync'),
     uptime: getUptimeSummary(),
     recentReboots: listRecentReboots(10),
+    csrfToken: getCsrfToken(req),
   });
 });
 

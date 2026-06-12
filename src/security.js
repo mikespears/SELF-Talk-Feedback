@@ -59,6 +59,10 @@ export function requireCsrf(req, res, next) {
       res.redirect('/login?error=csrf');
       return;
     }
+    if (req.path.startsWith('/api/') || req.path.startsWith('/uptime/')) {
+      res.status(403).json({ ok: false, error: 'csrf' });
+      return;
+    }
     res.status(403).type('html').send('Invalid or missing CSRF token.');
     return;
   }

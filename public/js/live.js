@@ -10,7 +10,24 @@ function formatDateTime(isoString) {
 
 function sensorLabel(sensorKey) {
   const parts = String(sensorKey).split('/');
+  if (parts.length >= 4 && parts[1] === 'sensor' && parts[2] === 'uptime_sensor') {
+    return parts[0];
+  }
+  if (parts.length > 1 && parts[parts.length - 1] === 'state') {
+    return parts[0];
+  }
   return parts.length > 1 ? parts[parts.length - 1] : sensorKey;
+}
+
+function getCsrfToken() {
+  return document.getElementById('live-csrf')?.value || '';
+}
+
+function setCsrfToken(token) {
+  const input = document.getElementById('live-csrf');
+  if (input && token) {
+    input.value = token;
+  }
 }
 
 function escapeHtml(value) {
@@ -103,7 +120,10 @@ function renderRebootRows(reboots) {
 }
 
 async function acknowledgeReboot(eventId) {
-  const csrf = window.__LIVE_CSRF__;
+  const csrf = getCsrfToken();
+  if (!csrf) {
+    return false;
+  }
   const body = new URLSearchParams({ eventId: String(eventId), _csrf: csrf });
   const response = await fetch('/staff/uptime/acknowledge', {
     method: 'POST',
@@ -146,6 +166,9 @@ async function refreshLive() {
       return;
     }
     const data = await response.json();
+    if (data.csrfToken) {
+      setCsrfToken(data.csrfToken);
+    }
     const alertCount = data.uptime?.unacknowledgedReboots ?? 0;
     document.title = `Live (${data.mqtt.connected ? 'MQTT ok' : 'MQTT down'}${
       alertCount ? ` · ${alertCount} reboot alert${alertCount === 1 ? '' : 's'}` : ''
