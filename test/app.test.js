@@ -38,7 +38,8 @@ describe('config helpers', () => {
 
   it('normalizes vote payloads', () => {
     assert.equal(normalizeVotePayload('"pos"'), 'pos');
-    assert.equal(normalizeVotePayload(' natural '), 'natural');
+    assert.equal(normalizeVotePayload(' neutral '), 'neutral');
+    assert.equal(normalizeVotePayload('natural'), 'neutral');
     assert.equal(normalizeVotePayload('invalid'), null);
   });
 });
@@ -90,7 +91,7 @@ describe('vote matching', () => {
     const summary = getVoteSummaryBySlot().find((row) => row.slot_id === 9001);
     assert.equal(summary.pos, 1);
     assert.equal(summary.neg, 1);
-    assert.equal(positiveRate({ pos: 1, neg: 1, natural: 0 }), 50);
+    assert.equal(positiveRate({ pos: 1, neg: 1, neutral: 0 }), 50);
   });
 });
 
@@ -209,7 +210,7 @@ describe('reports', () => {
         start_at: '2026-06-13T09:00:00-04:00',
         end_at: '2026-06-13T09:45:00-04:00',
         pos: 2,
-        natural: 1,
+        neutral: 1,
         neg: 0,
         total_votes: 3,
       },

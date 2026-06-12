@@ -2,12 +2,21 @@ import { getMeta, setMeta } from './db.js';
 
 const META_KEY = 'mqtt_settings';
 
+const LEGACY_UPTIME_TOPICS = new Set([
+  'uptime_sensor/#',
+  'uptime_sensor',
+  'uptime_sensor/+',
+  'sensor/#',
+  'sensor/+',
+]);
+
 function envDefaults() {
   return {
     url: process.env.MQTT_URL || 'mqtt://localhost:1883',
     username: process.env.MQTT_USERNAME || '',
     password: process.env.MQTT_PASSWORD || '',
     topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'vote/',
+    uptimeTopic: process.env.MQTT_UPTIME_TOPIC || '+/sensor/uptime_sensor/state',
     reconnectMs: Number(process.env.MQTT_RECONNECT_MS || 5_000),
   };
 }
@@ -90,6 +99,7 @@ function normalizeSettings(raw) {
     username: String(raw.username ?? defaults.username).trim(),
     password: raw.password != null ? String(raw.password) : defaults.password,
     topicPrefix: normalizeTopicPrefix(raw.topicPrefix ?? defaults.topicPrefix),
+    uptimeTopic: String(raw.uptimeTopic ?? defaults.uptimeTopic).trim() || defaults.uptimeTopic,
     reconnectMs: Number(raw.reconnectMs ?? defaults.reconnectMs),
   };
 }
@@ -104,6 +114,10 @@ export function validateMqttSettings(input) {
 
   if (!settings.topicPrefix) {
     errors.push('Topic prefix is required.');
+  }
+
+  if (!settings.uptimeTopic) {
+    errors.push('Uptime topic pattern is required.');
   }
 
   if (!Number.isFinite(settings.reconnectMs) || settings.reconnectMs < 1_000 || settings.reconnectMs > 60_000) {
@@ -132,6 +146,7 @@ export function getMqttSettingsForDisplay() {
     url: settings.url,
     username: settings.username,
     topicPrefix: settings.topicPrefix,
+    uptimeTopic: settings.uptimeTopic,
     reconnectMs: settings.reconnectMs,
     hasPassword: Boolean(settings.password),
   };
@@ -166,4 +181,36 @@ export function seedMqttSettingsFromEnvIfMissing() {
   const defaults = normalizeSettings(null);
   setMeta(META_KEY, JSON.stringify(defaults));
   return true;
+}
+
+const ESPHOME_UPTIME_TOPIC = '+/sensor/uptime_sensor/state';
+
+/** ESPHome vote boxes use {device}/sensor/uptime_sensor/state. */
+export function migrateLegacyUptimeTopicIfNeeded() {
+  const stored = getMeta(META_KEY);
+  if (!stored) {
+    return false;
+  }
+
+  try {
+    const raw = JSON.parse(stored);
+    const topic = String(raw.uptimeTopic ?? '').trim();
+    if (topic === ESPHOME_UPTIME_TOPIC) {
+      return false;
+    }
+    if (topic && !LEGACY_UPTIME_TOPICS.has(topic)) {
+      return false;
+    }
+
+    const settings = normalizeSettings({
+      ...raw,
+      uptimeTopic: ESPHOME_UPTIME_TOPIC,
+    });
+    setMeta(META_KEY, JSON.stringify(settings));
+    setMeta('mqtt_settings_updated_at', new Date().toISOString());
+    console.log(`Migrated MQTT uptime topic from "${topic || '(unset)'}" to ${ESPHOME_UPTIME_TOPIC}`);
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -2,6 +2,7 @@ import mqtt from 'mqtt';
 import { normalizeVotePayload, roomKeyFromTopic } from './config.js';
 import { getMqttSettings } from './mqttSettings.js';
 import { recordVote } from './voteService.js';
+import { recordUptimeReading, topicMatchesPattern } from './uptimeSensor.js';
 
 let client;
 let activeSettings = null;
@@ -39,16 +40,46 @@ function buildConnectOptions(settings) {
   return options;
 }
 
-function attachClientHandlers(settings) {
-  client.on('connect', () => {
-    status.connected = true;
-    status.lastError = null;
-    const topic = `${settings.topicPrefix}+`;
+function subscribeTopics(settings) {
+  const topics = [
+    `${settings.topicPrefix}+`,
+    settings.uptimeTopic,
+  ];
+  for (const topic of topics) {
     client.subscribe(topic, (err) => {
       if (err) {
         status.lastError = err.message;
       }
     });
+  }
+}
+
+function handleUptimeMessage(topic, rawPayload, receivedAtIso) {
+  const settings = activeSettings ?? getMqttSettings();
+  if (!topicMatchesPattern(topic, settings.uptimeTopic)) {
+    return false;
+  }
+
+  const result = recordUptimeReading({ topic, rawPayload, receivedAtIso });
+  if (!result.ok) {
+    emitVote({ type: 'ignored', reason: 'invalid_uptime_payload', topic, rawPayload });
+    return true;
+  }
+
+  if (result.rebooted) {
+    console.warn(
+      `Uptime reboot detected on ${topic}: ${result.previousValue} -> ${result.value}`,
+    );
+  }
+
+  return true;
+}
+
+function attachClientHandlers(settings) {
+  client.on('connect', () => {
+    status.connected = true;
+    status.lastError = null;
+    subscribeTopics(settings);
   });
 
   client.on('reconnect', () => {
@@ -67,11 +98,16 @@ function attachClientHandlers(settings) {
     status.lastMessageAt = new Date().toISOString();
     status.messagesReceived += 1;
 
+    const rawPayload = payloadBuffer.toString('utf8');
+    const receivedAtIso = new Date().toISOString();
+
+    if (handleUptimeMessage(topic, rawPayload, receivedAtIso)) {
+      return;
+    }
+
     const prefix = activeSettings?.topicPrefix ?? settings.topicPrefix;
     const roomKey = roomKeyFromTopic(topic, prefix);
-    const rawPayload = payloadBuffer.toString('utf8');
     const voteType = normalizeVotePayload(rawPayload);
-    const receivedAtIso = new Date().toISOString();
 
     if (!roomKey) {
       emitVote({ type: 'ignored', reason: 'unknown_topic', topic, rawPayload });
@@ -109,6 +145,7 @@ export function getMqttStatus() {
     ...status,
     url: settings.url,
     topicPrefix: settings.topicPrefix,
+    uptimeTopic: settings.uptimeTopic,
     username: settings.username,
     reconnectMs: settings.reconnectMs,
     hasPassword: Boolean(settings.password),

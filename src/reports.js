@@ -48,11 +48,11 @@ export function buildStaffReportData() {
     (acc, row) => {
       acc.pos += row.pos || 0;
       acc.neg += row.neg || 0;
-      acc.natural += row.natural || 0;
+      acc.neutral += row.neutral || 0;
       acc.total += row.total_votes || 0;
       return acc;
     },
-    { pos: 0, neg: 0, natural: 0, total: 0 },
+    { pos: 0, neg: 0, neutral: 0, total: 0 },
   );
 
   return {
@@ -93,7 +93,7 @@ export function summaryToCsv(summary) {
       row.start_at,
       row.end_at,
       row.pos || 0,
-      row.natural || 0,
+      row.neutral || 0,
       row.neg || 0,
       row.total_votes || 0,
     ];
@@ -112,7 +112,7 @@ function csvEscape(value) {
 }
 
 export function positiveRate(totals) {
-  const total = (totals.pos || 0) + (totals.neg || 0) + (totals.natural || 0);
+  const total = (totals.pos || 0) + (totals.neg || 0) + (totals.neutral || 0);
   if (!total) {
     return null;
   }

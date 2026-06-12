@@ -30,16 +30,16 @@ router.get('/:token', (req, res) => {
   const { slot, totals, hourly } = report;
   const speakers = parseSpeakers(slot.speakers).join(', ') || 'Speaker';
   const pos = totals.pos || 0;
-  const natural = totals.natural || 0;
+  const neutral = totals.neutral || 0;
   const neg = totals.neg || 0;
-  const rate = positiveRate({ pos, natural, neg });
+  const rate = positiveRate({ pos, neutral, neg });
 
   const hourlyRows = hourly
     .map(
       (row) => `<tr>
         <td>${escapeHtml(row.hour)}</td>
         <td>${row.pos || 0}</td>
-        <td>${row.natural || 0}</td>
+        <td>${row.neutral || 0}</td>
         <td>${row.neg || 0}</td>
       </tr>`,
     )
@@ -52,7 +52,7 @@ router.get('/:token', (req, res) => {
       <p class="lead">${escapeHtml(speakers)}</p>
       <p class="muted">${escapeHtml(slot.room_name)} · ${formatDateTime(slot.start_at)} – ${formatDateTime(slot.end_at)}</p>
 
-      ${voteBar({ pos, natural, neg })}
+      ${voteBar({ pos, neutral, neg })}
 
       <div class="metric-row">
         <div class="metric"><span>Total responses</span><strong>${totals.total || 0}</strong></div>

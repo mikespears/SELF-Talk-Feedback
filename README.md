@@ -4,7 +4,7 @@ Web tool for **SouthEast Linux Fest** that listens for audience vote buttons ove
 
 ## Features
 
-- MQTT subscription on `vote/A`, `vote/B`, `vote/C`, `vote/D` with payloads `natural`, `pos`, or `neg`
+- MQTT subscription on `vote/A`, `vote/B`, `vote/C`, `vote/D` with payloads `neutral`, `pos`, or `neg`
 - Automatic Pretalx schedule sync from [SELF schedule](https://speakers.southeastlinuxfest.org/southeast-linux-fest-2026/schedule/)
 - Time-based vote-to-talk matching per room
 - Staff authentication (session login)
@@ -95,4 +95,4 @@ cp .env.example .env   # edit secrets
 bash deploy/install.sh
 ```
 
-From a workstation (optional): copy `scripts/deploy.env.example` to `scripts/deploy.env`, then run `node scripts/deploy-remote.mjs`.
+From a workstation (optional): copy `scripts/deploy.env.example` to `scripts/deploy.env`, then run `node scripts/deploy-remote.mjs` for a fresh install or `node scripts/deploy-update.mjs` to push code updates without resetting `.env` or data.

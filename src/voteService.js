@@ -64,7 +64,7 @@ export function getVoteSummaryBySlot() {
          s.end_at,
          SUM(CASE WHEN v.vote_type = 'pos' THEN 1 ELSE 0 END) AS pos,
          SUM(CASE WHEN v.vote_type = 'neg' THEN 1 ELSE 0 END) AS neg,
-         SUM(CASE WHEN v.vote_type = 'natural' THEN 1 ELSE 0 END) AS natural,
+         SUM(CASE WHEN v.vote_type = 'neutral' THEN 1 ELSE 0 END) AS neutral,
          COUNT(v.id) AS total_votes,
          SUM(CASE WHEN v.matched = 0 THEN 1 ELSE 0 END) AS unmatched_in_slot
        FROM schedule_slots s
@@ -87,7 +87,7 @@ export function getSpeakerReport(slotId) {
       `SELECT
          SUM(CASE WHEN vote_type = 'pos' THEN 1 ELSE 0 END) AS pos,
          SUM(CASE WHEN vote_type = 'neg' THEN 1 ELSE 0 END) AS neg,
-         SUM(CASE WHEN vote_type = 'natural' THEN 1 ELSE 0 END) AS natural,
+         SUM(CASE WHEN vote_type = 'neutral' THEN 1 ELSE 0 END) AS neutral,
          COUNT(*) AS total
        FROM votes WHERE slot_id = ?`,
     )
@@ -99,7 +99,7 @@ export function getSpeakerReport(slotId) {
          strftime('%Y-%m-%d %H:00', received_at) AS hour,
          SUM(CASE WHEN vote_type = 'pos' THEN 1 ELSE 0 END) AS pos,
          SUM(CASE WHEN vote_type = 'neg' THEN 1 ELSE 0 END) AS neg,
-         SUM(CASE WHEN vote_type = 'natural' THEN 1 ELSE 0 END) AS natural
+         SUM(CASE WHEN vote_type = 'neutral' THEN 1 ELSE 0 END) AS neutral
        FROM votes
        WHERE slot_id = ?
        GROUP BY hour
@@ -139,7 +139,7 @@ export function getLiveRoomStats() {
         `SELECT
            SUM(CASE WHEN vote_type = 'pos' THEN 1 ELSE 0 END) AS pos,
            SUM(CASE WHEN vote_type = 'neg' THEN 1 ELSE 0 END) AS neg,
-           SUM(CASE WHEN vote_type = 'natural' THEN 1 ELSE 0 END) AS natural,
+           SUM(CASE WHEN vote_type = 'neutral' THEN 1 ELSE 0 END) AS neutral,
            COUNT(*) AS total
          FROM votes WHERE slot_id = ?`,
       )

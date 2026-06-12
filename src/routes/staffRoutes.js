@@ -17,7 +17,13 @@ import {
   getRecentVotes,
   getVoteSummaryBySlot,
 } from '../voteService.js';
-import { escapeHtml, formatDateTime, layout, parseSpeakers, voteBar } from '../views.js';
+import {
+  getUptimeSummary,
+  listRecentReboots,
+  acknowledgeRebootEvent,
+  sensorLabelFromTopic,
+} from '../uptimeSensor.js';
+import { escapeHtml, formatDateTime, layout, parseSpeakers, voteBar, voteTypeLabel } from '../views.js';
 import { ROOM_MAP } from '../config.js';
 import { requireCsrf } from '../security.js';
 import userRoutes from './userRoutes.js';
@@ -48,6 +54,56 @@ router.get('/', (req, res) => {
   const recent = getRecentVotes(20);
   const mqtt = getMqttStatus();
   const schedule = getScheduleStats();
+  const uptime = getUptimeSummary();
+  const recentReboots = listRecentReboots(10);
+
+  const alertBanner = uptime.alerts.length
+    ? `<div id="uptime-alert-banner" class="banner alert-banner" role="alert">
+        <strong>Device reboot detected</strong>
+        <ul id="uptime-alert-list" class="alert-list">
+          ${uptime.alerts
+            .map(
+              (event) => `<li data-event-id="${event.id}">
+                <span class="alert-text">
+                  <strong>${escapeHtml(sensorLabelFromTopic(event.sensor_key))}</strong>
+                  counter dropped from ${event.previous_value} to ${event.new_value}
+                  · ${formatDateTime(event.detected_at)}
+                </span>
+                <button type="button" class="btn btn-small btn-secondary ack-reboot" data-event-id="${event.id}">
+                  Acknowledge
+                </button>
+              </li>`,
+            )
+            .join('')}
+        </ul>
+      </div>`
+    : '<div id="uptime-alert-banner" class="banner alert-banner hidden" role="alert" hidden></div>';
+
+  const sensorRows = uptime.sensors.length
+    ? uptime.sensors
+        .map(
+          (sensor) => `<tr>
+            <td>${escapeHtml(sensorLabelFromTopic(sensor.sensor_key))}</td>
+            <td><code>${escapeHtml(sensor.mqtt_topic)}</code></td>
+            <td>${sensor.last_value}</td>
+            <td>${formatDateTime(sensor.last_seen_at)}</td>
+          </tr>`,
+        )
+        .join('')
+    : '<tr><td colspan="4">No uptime readings yet</td></tr>';
+
+  const rebootRows = recentReboots.length
+    ? recentReboots
+        .map(
+          (event) => `<tr class="${event.acknowledged_at ? '' : 'warn-row'}">
+            <td>${formatDateTime(event.detected_at)}</td>
+            <td>${escapeHtml(sensorLabelFromTopic(event.sensor_key))}</td>
+            <td>${event.previous_value} → ${event.new_value}</td>
+            <td>${event.acknowledged_at ? 'Acknowledged' : '<strong class="warn">New</strong>'}</td>
+          </tr>`,
+        )
+        .join('')
+    : '<tr><td colspan="4">No reboots detected</td></tr>';
 
   const liveCards = live.length
     ? live
@@ -59,7 +115,7 @@ router.get('/', (req, res) => {
               <h2>${escapeHtml(slot.title)}</h2>
               <p class="muted">${escapeHtml(speakers)} · until ${formatDateTime(slot.end_at)}</p>
             </header>
-            ${voteBar({ pos: counts.pos || 0, natural: counts.natural || 0, neg: counts.neg || 0 })}
+            ${voteBar({ pos: counts.pos || 0, neutral: counts.neutral || 0, neg: counts.neg || 0 })}
           </article>`;
         })
         .join('')
@@ -70,13 +126,15 @@ router.get('/', (req, res) => {
       (vote) => `<tr>
         <td>${formatDateTime(vote.received_at)}</td>
         <td>${escapeHtml(vote.room_key)}</td>
-        <td><span class="pill ${escapeHtml(vote.vote_type)}">${escapeHtml(vote.vote_type)}</span></td>
+        <td><span class="pill ${escapeHtml(vote.vote_type === 'natural' ? 'neutral' : vote.vote_type)}">${escapeHtml(voteTypeLabel(vote.vote_type))}</span></td>
         <td>${vote.matched ? escapeHtml(vote.talk_title || vote.slot_title || '—') : '<em>Unmatched</em>'}</td>
       </tr>`,
     )
     .join('');
 
   const body = `
+    ${alertBanner}
+
     <section class="toolbar">
       <div>
         <h1>Live dashboard</h1>
@@ -95,8 +153,31 @@ router.get('/', (req, res) => {
     <section class="status-grid">
       <div class="stat"><span>MQTT</span><strong class="${mqtt.connected ? 'ok' : 'warn'}">${mqtt.connected ? 'Connected' : 'Disconnected'}</strong></div>
       <div class="stat"><span>Messages</span><strong>${mqtt.messagesReceived}</strong></div>
-      <div class="stat"><span>Last vote</span><strong>${formatDateTime(mqtt.lastMessageAt)}</strong></div>
+      <div class="stat"><span>Last message</span><strong>${formatDateTime(mqtt.lastMessageAt)}</strong></div>
+      <div class="stat"><span>Uptime sensors</span><strong>${uptime.sensorCount}</strong></div>
+      <div class="stat"><span>Reboot alerts</span><strong class="${uptime.unacknowledgedReboots ? 'warn' : ''}">${uptime.unacknowledgedReboots}</strong></div>
       <div class="stat"><span>Schedule sync</span><strong>${formatDateTime(getMeta('last_schedule_sync'))}</strong></div>
+    </section>
+
+    <section class="panel" id="uptime-sensors-panel">
+      <h2>Uptime sensors</h2>
+      <p class="muted">Monitors MQTT topic <code>${escapeHtml(mqtt.uptimeTopic)}</code>. A decreasing counter indicates a device reboot.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Sensor</th><th>Topic</th><th>Counter</th><th>Last seen</th></tr></thead>
+          <tbody id="uptime-sensor-rows">${sensorRows}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Reboot history</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Detected</th><th>Sensor</th><th>Counter change</th><th>Status</th></tr></thead>
+          <tbody id="uptime-reboot-rows">${rebootRows}</tbody>
+        </table>
+      </div>
     </section>
 
     <section class="grid two-col">
@@ -115,6 +196,7 @@ router.get('/', (req, res) => {
       </div>
     </section>
 
+    <script>window.__LIVE_CSRF__ = ${JSON.stringify(req.session.csrfToken ?? '')};</script>
     <script src="/js/live.js"></script>`;
 
   res.type('html').send(
@@ -203,14 +285,14 @@ router.get('/reports', (req, res) => {
     .filter((row) => row.total_votes > 0)
     .map((row) => {
       const speakers = parseSpeakers(row.speakers).join(', ') || '—';
-      const rate = positiveRate({ pos: row.pos, neg: row.neg, natural: row.natural });
+      const rate = positiveRate({ pos: row.pos, neg: row.neg, neutral: row.neutral });
       return `<tr>
         <td>${formatDateTime(row.start_at)}</td>
         <td>${escapeHtml(row.room_name)}</td>
         <td>${escapeHtml(row.title)}</td>
         <td>${escapeHtml(speakers)}</td>
         <td>${row.pos || 0}</td>
-        <td>${row.natural || 0}</td>
+        <td>${row.neutral || 0}</td>
         <td>${row.neg || 0}</td>
         <td>${rate === null ? '—' : `${rate}%`}</td>
         <td>
@@ -257,7 +339,7 @@ router.get('/reports', (req, res) => {
     <section class="status-grid">
       <div class="stat"><span>Total votes</span><strong>${report.totals.total}</strong></div>
       <div class="stat"><span>Positive</span><strong class="pos">${report.totals.pos}</strong></div>
-      <div class="stat"><span>Neutral</span><strong>${report.totals.natural}</strong></div>
+      <div class="stat"><span>Neutral</span><strong>${report.totals.neutral}</strong></div>
       <div class="stat"><span>Negative</span><strong class="neg">${report.totals.neg}</strong></div>
       <div class="stat"><span>Unmatched</span><strong class="warn">${report.unmatchedCount}</strong></div>
     </section>
@@ -335,7 +417,7 @@ router.get('/reports/staff.html', (req, res) => {
         <td>${escapeHtml(row.title)}</td>
         <td>${escapeHtml(speakers)}</td>
         <td>${row.pos || 0}</td>
-        <td>${row.natural || 0}</td>
+        <td>${row.neutral || 0}</td>
         <td>${row.neg || 0}</td>
         <td>${row.total_votes || 0}</td>
       </tr>`;
@@ -347,7 +429,7 @@ router.get('/reports/staff.html', (req, res) => {
       (vote) => `<tr>
         <td>${formatDateTime(vote.received_at)}</td>
         <td>${escapeHtml(vote.room_key)}</td>
-        <td>${escapeHtml(vote.vote_type)}</td>
+        <td>${escapeHtml(voteTypeLabel(vote.vote_type))}</td>
         <td>${escapeHtml(vote.raw_payload)}</td>
       </tr>`,
     )
@@ -361,7 +443,7 @@ router.get('/reports/staff.html', (req, res) => {
     <section class="status-grid">
       <div class="stat"><span>Total votes</span><strong>${report.totals.total}</strong></div>
       <div class="stat"><span>Positive</span><strong>${report.totals.pos}</strong></div>
-      <div class="stat"><span>Neutral</span><strong>${report.totals.natural}</strong></div>
+      <div class="stat"><span>Neutral</span><strong>${report.totals.neutral}</strong></div>
       <div class="stat"><span>Negative</span><strong>${report.totals.neg}</strong></div>
     </section>
     <div class="table-wrap">
@@ -392,6 +474,16 @@ router.get('/reports/staff.html', (req, res) => {
   );
 });
 
+router.post('/uptime/acknowledge', express.urlencoded({ extended: false }), (req, res) => {
+  const eventId = Number(req.body.eventId);
+  if (!eventId) {
+    res.status(400).json({ ok: false, error: 'invalid_event' });
+    return;
+  }
+  const ok = acknowledgeRebootEvent(eventId);
+  res.json({ ok });
+});
+
 router.get('/api/live', (req, res) => {
   res.json({
     mqtt: getMqttStatus(),
@@ -399,6 +491,8 @@ router.get('/api/live', (req, res) => {
     recent: getRecentVotes(20),
     schedule: getScheduleStats(),
     lastScheduleSync: getMeta('last_schedule_sync'),
+    uptime: getUptimeSummary(),
+    recentReboots: listRecentReboots(10),
   });
 });
 

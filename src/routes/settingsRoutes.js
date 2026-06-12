@@ -45,6 +45,7 @@ function renderMqttSection({ settings, mqtt, csrfField }) {
         <div class="stat"><span>Status</span><strong class="${mqtt.connected ? 'ok' : 'warn'}">${mqtt.connected ? 'Connected' : 'Disconnected'}</strong></div>
         <div class="stat"><span>Broker</span><strong>${escapeHtml(mqtt.url)}</strong></div>
         <div class="stat"><span>Subscribe pattern</span><strong><code>${escapeHtml(mqtt.topicPrefix)}+</code></strong></div>
+        <div class="stat"><span>Uptime topic</span><strong><code>${escapeHtml(mqtt.uptimeTopic)}</code></strong></div>
         <div class="stat"><span>Messages</span><strong>${mqtt.messagesReceived}</strong></div>
         <div class="stat"><span>Last message</span><strong>${formatDateTime(mqtt.lastMessageAt)}</strong></div>
         <div class="stat"><span>Updated</span><strong>${formatDateTime(getMeta('mqtt_settings_updated_at'))}</strong></div>
@@ -81,6 +82,12 @@ function renderMqttSection({ settings, mqtt, csrfField }) {
                      placeholder="vote/">
             </label>
             <label>
+              Uptime sensor topic
+              <input type="text" name="uptimeTopic" required value="${escapeHtml(settings.uptimeTopic)}"
+                     placeholder="+/sensor/uptime_sensor/state">
+              <p class="muted hint">ESPHome devices publish to <code>ballroomdvote/sensor/uptime_sensor/state</code>. Use <code>+/sensor/uptime_sensor/state</code> for all vote boxes, or <code>ballroomdvote/sensor/uptime_sensor/state</code> for one device.</p>
+            </label>
+            <label>
               Reconnect interval (ms)
               <input type="number" name="reconnectMs" required min="1000" max="60000" step="1000"
                      value="${settings.reconnectMs}">
@@ -92,7 +99,8 @@ function renderMqttSection({ settings, mqtt, csrfField }) {
           <h3>Expected topics</h3>
           <p class="muted">Subscribes to <code>${escapeHtml(settings.topicPrefix)}+</code> (one level wildcard).</p>
           <ul>${roomExamples}</ul>
-          <p class="muted">Valid payloads: <code>pos</code>, <code>neg</code>, <code>natural</code></p>
+          <p class="muted">Valid vote payloads: <code>pos</code>, <code>neg</code>, <code>neutral</code> (legacy <code>natural</code> is also accepted)</p>
+          <p class="muted">Uptime payloads: increasing numeric counter (reboot detected when value drops).</p>
         </div>
       </div>
     </section>`;
@@ -210,6 +218,7 @@ router.post('/mqtt', express.urlencoded({ extended: false }), (req, res) => {
     username: req.body.username,
     password: req.body.password,
     topicPrefix: req.body.topicPrefix,
+    uptimeTopic: req.body.uptimeTopic,
     reconnectMs: req.body.reconnectMs,
   });
 

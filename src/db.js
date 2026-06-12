@@ -53,7 +53,7 @@ function migrate(database) {
       received_at TEXT NOT NULL,
       mqtt_topic TEXT NOT NULL,
       room_key TEXT NOT NULL,
-      vote_type TEXT NOT NULL CHECK (vote_type IN ('natural', 'pos', 'neg')),
+      vote_type TEXT NOT NULL CHECK (vote_type IN ('neutral', 'pos', 'neg')),
       slot_id INTEGER,
       submission_code TEXT,
       talk_title TEXT,
@@ -80,6 +80,84 @@ function migrate(database) {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS uptime_sensors (
+      sensor_key TEXT PRIMARY KEY,
+      mqtt_topic TEXT NOT NULL,
+      last_value REAL NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS uptime_reboot_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sensor_key TEXT NOT NULL,
+      mqtt_topic TEXT NOT NULL,
+      previous_value REAL NOT NULL,
+      new_value REAL NOT NULL,
+      detected_at TEXT NOT NULL,
+      acknowledged_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_uptime_reboots_unacked
+      ON uptime_reboot_events (acknowledged_at, detected_at);
+  `);
+
+  migrateVoteTypesToNeutral(database);
+}
+
+function migrateVoteTypesToNeutral(database) {
+  const done = database
+    .prepare("SELECT value FROM app_meta WHERE key = 'vote_type_neutral_v1'")
+    .get();
+  if (done) {
+    return;
+  }
+
+  const table = database
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'votes'")
+    .get();
+  if (!table?.sql?.includes("'natural'")) {
+    database
+      .prepare(
+        "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('vote_type_neutral_v1', '1')",
+      )
+      .run();
+    return;
+  }
+
+  database.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN;
+    CREATE TABLE votes_migrated (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      received_at TEXT NOT NULL,
+      mqtt_topic TEXT NOT NULL,
+      room_key TEXT NOT NULL,
+      vote_type TEXT NOT NULL CHECK (vote_type IN ('neutral', 'pos', 'neg')),
+      slot_id INTEGER,
+      submission_code TEXT,
+      talk_title TEXT,
+      matched INTEGER NOT NULL DEFAULT 0,
+      raw_payload TEXT NOT NULL,
+      FOREIGN KEY (slot_id) REFERENCES schedule_slots(id)
+    );
+    INSERT INTO votes_migrated (
+      id, received_at, mqtt_topic, room_key, vote_type,
+      slot_id, submission_code, talk_title, matched, raw_payload
+    )
+    SELECT
+      id, received_at, mqtt_topic, room_key,
+      CASE vote_type WHEN 'natural' THEN 'neutral' ELSE vote_type END,
+      slot_id, submission_code, talk_title, matched, raw_payload
+    FROM votes;
+    DROP TABLE votes;
+    ALTER TABLE votes_migrated RENAME TO votes;
+    CREATE INDEX IF NOT EXISTS idx_votes_slot ON votes (slot_id);
+    CREATE INDEX IF NOT EXISTS idx_votes_room_received ON votes (room_key, received_at);
+    INSERT OR REPLACE INTO app_meta (key, value) VALUES ('vote_type_neutral_v1', '1');
+    COMMIT;
+    PRAGMA foreign_keys = ON;
   `);
 }
 

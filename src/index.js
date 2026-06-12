@@ -6,7 +6,7 @@ import { config, resolveCookieSecure } from './config.js';
 import { ensureStaffUser } from './auth.js';
 import { getDb } from './db.js';
 import { startMqttListener } from './mqttClient.js';
-import { seedMqttSettingsFromEnvIfMissing } from './mqttSettings.js';
+import { migrateLegacyUptimeTopicIfNeeded, seedMqttSettingsFromEnvIfMissing } from './mqttSettings.js';
 import { seedPretalxSettingsFromEnvIfMissing } from './pretalxSettings.js';
 import { startScheduledPretalxSync } from './pretalxSync.js';
 import { syncScheduleFromPretalx, getScheduleStats } from './pretalx.js';
@@ -68,7 +68,7 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({
     ok: true,
-    version: '1.4.0-security',
+    version: '1.5.0',
   });
 });
 
@@ -91,6 +91,7 @@ async function bootstrap() {
 
   seedPretalxSettingsFromEnvIfMissing();
   seedMqttSettingsFromEnvIfMissing();
+  migrateLegacyUptimeTopicIfNeeded();
   startMqttListener();
 
   if (getScheduleStats().slotCount === 0) {

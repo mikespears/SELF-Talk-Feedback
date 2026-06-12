@@ -78,8 +78,22 @@ export function layout({ title, body, staffUser, activeNav, csrfField = '' }) {
 </html>`;
 }
 
-export function voteBar({ pos = 0, natural = 0, neg = 0 }) {
-  const total = pos + natural + neg;
+export function voteTypeLabel(voteType) {
+  switch (voteType) {
+    case 'pos':
+      return 'Positive';
+    case 'neg':
+      return 'Negative';
+    case 'neutral':
+    case 'natural':
+      return 'Neutral';
+    default:
+      return String(voteType ?? '');
+  }
+}
+
+export function voteBar({ pos = 0, neutral = 0, neg = 0 }) {
+  const total = pos + neutral + neg;
   if (!total) {
     return '<div class="vote-bar empty"><span>No votes yet</span></div>';
   }
@@ -87,12 +101,12 @@ export function voteBar({ pos = 0, natural = 0, neg = 0 }) {
   const pct = (n) => Math.round((n / total) * 100);
   return `<div class="vote-bar" aria-label="Vote breakdown">
     <span class="segment pos" style="width:${pct(pos)}%" title="Positive: ${pos}"></span>
-    <span class="segment natural" style="width:${pct(natural)}%" title="Neutral: ${natural}"></span>
+    <span class="segment neutral" style="width:${pct(neutral)}%" title="Neutral: ${neutral}"></span>
     <span class="segment neg" style="width:${pct(neg)}%" title="Negative: ${neg}"></span>
   </div>
   <div class="vote-legend">
     <span class="pos">Positive ${pos}</span>
-    <span class="natural">Neutral ${natural}</span>
+    <span class="neutral">Neutral ${neutral}</span>
     <span class="neg">Negative ${neg}</span>
     <span class="total">Total ${total}</span>
   </div>`;

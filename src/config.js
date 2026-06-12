@@ -15,7 +15,7 @@ export const ROOM_MAP = {
   D: { pretalxRoomId: 16, label: 'Piedmont 1-3 (TBD Ballroom)' },
 };
 
-export const VALID_VOTE_TYPES = ['natural', 'pos', 'neg'];
+export const VALID_VOTE_TYPES = ['neutral', 'pos', 'neg'];
 
 export const config = {
   port: Number(process.env.PORT || 3847),
@@ -54,5 +54,8 @@ export function roomKeyFromTopic(topic, topicPrefix = 'vote/') {
 
 export function normalizeVotePayload(raw) {
   const value = String(raw).trim().toLowerCase().replace(/^"|"$/g, '');
+  if (value === 'natural') {
+    return 'neutral';
+  }
   return VALID_VOTE_TYPES.includes(value) ? value : null;
 }
