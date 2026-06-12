@@ -3,7 +3,8 @@ export function toUtcIso(value) {
   return new Date(value).toISOString();
 }
 
-export function isWithinSlot(receivedAtIso, startAt, endAt) {
+export function isWithinSlot(receivedAtIso, startAt, endAt, graceMinutes = 0) {
   const t = Date.parse(receivedAtIso);
-  return t >= Date.parse(startAt) && t < Date.parse(endAt);
+  const graceMs = graceMinutes * 60_000;
+  return t >= Date.parse(startAt) - graceMs && t < Date.parse(endAt) + graceMs;
 }

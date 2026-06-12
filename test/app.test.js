@@ -70,6 +70,85 @@ describe('vote matching', () => {
     assert.equal(slot.submission_code, 'TEST01');
   });
 
+  it('matches votes within grace window after slot end', () => {
+    db.prepare(
+      `INSERT OR REPLACE INTO schedule_slots (
+        id, submission_code, title, speakers, room_key, pretalx_room_id,
+        room_name, start_at, end_at, duration_minutes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      9002,
+      'FIRST',
+      'First Talk',
+      '[]',
+      'C',
+      15,
+      'Salon C',
+      '2026-06-12T14:00:00.000Z',
+      '2026-06-12T14:45:00.000Z',
+      45,
+    );
+    db.prepare(
+      `INSERT OR REPLACE INTO schedule_slots (
+        id, submission_code, title, speakers, room_key, pretalx_room_id,
+        room_name, start_at, end_at, duration_minutes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      9003,
+      'SECOND',
+      'Second Talk',
+      '[]',
+      'C',
+      15,
+      'Salon C',
+      '2026-06-12T15:00:00.000Z',
+      '2026-06-12T15:45:00.000Z',
+      45,
+    );
+
+    assert.equal(findActiveSlot('C', '2026-06-12T14:48:00.000Z').submission_code, 'FIRST');
+    assert.equal(findActiveSlot('C', '2026-06-12T14:51:15.000Z').submission_code, 'FIRST');
+    assert.equal(findActiveSlot('C', '2026-06-12T14:55:00.000Z').submission_code, 'FIRST');
+    assert.equal(findActiveSlot('C', '2026-06-12T14:55:13.818Z').submission_code, 'FIRST');
+    assert.equal(findActiveSlot('C', '2026-06-12T15:00:00.000Z').submission_code, 'SECOND');
+
+    db.prepare(
+      `INSERT OR REPLACE INTO schedule_slots (
+        id, submission_code, title, speakers, room_key, pretalx_room_id,
+        room_name, start_at, end_at, duration_minutes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      9004,
+      'EARLY',
+      'Early Talk',
+      '[]',
+      'A',
+      13,
+      'Salon A',
+      '2026-06-12T12:00:00.000Z',
+      '2026-06-12T12:45:00.000Z',
+      45,
+    );
+    db.prepare(
+      `INSERT OR REPLACE INTO schedule_slots (
+        id, submission_code, title, speakers, room_key, pretalx_room_id,
+        room_name, start_at, end_at, duration_minutes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      9005,
+      'LATE',
+      'Late Talk',
+      '[]',
+      'A',
+      13,
+      'Salon A',
+      '2026-06-12T16:00:00.000Z',
+      '2026-06-12T16:45:00.000Z',
+      45,
+    );
+    assert.equal(findActiveSlot('A', '2026-06-12T14:00:00.000Z'), null);
+  });
+
   it('records and aggregates votes', () => {
     getDb().prepare('DELETE FROM votes WHERE slot_id = ?').run(9001);
 

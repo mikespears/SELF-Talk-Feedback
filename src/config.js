@@ -27,6 +27,7 @@ export const config = {
   staffUsername: process.env.STAFF_USERNAME || 'staff',
   staffPassword: process.env.STAFF_PASSWORD || 'change-me',
   displayTimezone: process.env.DISPLAY_TIMEZONE || 'America/New_York',
+  matchGraceMinutes: Number(process.env.MATCH_GRACE_MINUTES || 10),
   rootDir,
   publicDir: path.join(rootDir, 'public'),
   viewsDir: path.join(rootDir, 'views'),

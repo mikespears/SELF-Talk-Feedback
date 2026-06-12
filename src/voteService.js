@@ -1,22 +1,127 @@
+import { config } from './config.js';
 import { getDb } from './db.js';
 import { toUtcIso } from './time.js';
 
+const MAX_BREAK_GAP_MS = 30 * 60 * 1000;
+
+export function slotMatchesAt(slot, receivedAtIso, graceMinutes = config.matchGraceMinutes) {
+  const atMs = Date.parse(toUtcIso(receivedAtIso));
+  const graceMs = graceMinutes * 60_000;
+  return (
+    atMs >= Date.parse(slot.start_at) - graceMs
+    && atMs < Date.parse(slot.end_at) + graceMs
+  );
+}
+
+function slotInCore(slot, atMs) {
+  return atMs >= Date.parse(slot.start_at) && atMs < Date.parse(slot.end_at);
+}
+
+function findSlotInShortBreak(slots, atMs) {
+  for (let i = 0; i < slots.length - 1; i += 1) {
+    const left = slots[i];
+    const right = slots[i + 1];
+    const leftEnd = Date.parse(left.end_at);
+    const rightStart = Date.parse(right.start_at);
+    const gapMs = rightStart - leftEnd;
+    if (gapMs > 0 && gapMs <= MAX_BREAK_GAP_MS && atMs >= leftEnd && atMs < rightStart) {
+      return left;
+    }
+  }
+  return null;
+}
+
 /**
  * Find the talk slot active in a room at a given ISO timestamp.
+ * Includes a grace window before start and after end, and counts short
+ * scheduled breaks toward the talk that just ended.
  */
 export function findActiveSlot(roomKey, receivedAtIso) {
-  const db = getDb();
-  const at = toUtcIso(receivedAtIso);
-  return db
+  const slots = getDb()
     .prepare(
       `SELECT * FROM schedule_slots
        WHERE room_key = ?
-         AND start_at <= ?
-         AND end_at > ?
-       ORDER BY start_at DESC
-       LIMIT 1`,
+       ORDER BY start_at ASC`,
     )
-    .get(roomKey, at, at);
+    .all(roomKey);
+
+  const atMs = Date.parse(toUtcIso(receivedAtIso));
+
+  const inCore = slots.filter((slot) => slotInCore(slot, atMs));
+  if (inCore.length === 1) {
+    return inCore[0];
+  }
+  if (inCore.length > 1) {
+    return inCore.sort((a, b) => Date.parse(b.start_at) - Date.parse(a.start_at))[0];
+  }
+
+  const breakSlot = findSlotInShortBreak(slots, atMs);
+  if (breakSlot) {
+    return breakSlot;
+  }
+
+  const matching = slots.filter((slot) => slotMatchesAt(slot, receivedAtIso));
+  if (!matching.length) {
+    return null;
+  }
+  if (matching.length === 1) {
+    return matching[0];
+  }
+
+  return matching.sort((a, b) => Date.parse(b.start_at) - Date.parse(a.start_at))[0];
+}
+
+export function rematchUnmatchedVotes() {
+  const db = getDb();
+  const unmatched = db.prepare('SELECT * FROM votes WHERE matched = 0').all();
+  let updated = 0;
+
+  const updateStmt = db.prepare(
+    `UPDATE votes
+     SET matched = 1, slot_id = ?, submission_code = ?, talk_title = ?
+     WHERE id = ?`,
+  );
+
+  for (const vote of unmatched) {
+    const slot = findActiveSlot(vote.room_key, vote.received_at);
+    if (slot) {
+      updateStmt.run(slot.id, slot.submission_code, slot.title, vote.id);
+      updated += 1;
+    }
+  }
+
+  return { checked: unmatched.length, updated };
+}
+
+export function rematchAllVotes() {
+  const db = getDb();
+  const votes = db.prepare('SELECT * FROM votes').all();
+  let updated = 0;
+
+  const updateStmt = db.prepare(
+    `UPDATE votes
+     SET matched = ?, slot_id = ?, submission_code = ?, talk_title = ?
+     WHERE id = ?`,
+  );
+
+  for (const vote of votes) {
+    const slot = findActiveSlot(vote.room_key, vote.received_at);
+    const matched = slot ? 1 : 0;
+    const slotId = slot?.id ?? null;
+    const submissionCode = slot?.submission_code ?? null;
+    const talkTitle = slot?.title ?? null;
+    if (
+      vote.matched !== matched
+      || vote.slot_id !== slotId
+      || vote.submission_code !== submissionCode
+      || vote.talk_title !== talkTitle
+    ) {
+      updateStmt.run(matched, slotId, submissionCode, talkTitle, vote.id);
+      updated += 1;
+    }
+  }
+
+  return { checked: votes.length, updated };
 }
 
 export function recordVote({ roomKey, mqttTopic, voteType, rawPayload, receivedAtIso }) {
@@ -124,14 +229,16 @@ export function getUnmatchedVotes(limit = 100) {
 export function getLiveRoomStats() {
   const db = getDb();
   const now = toUtcIso(new Date());
+  const byRoom = new Map();
 
-  const activeSlots = db
-    .prepare(
-      `SELECT * FROM schedule_slots
-       WHERE start_at <= ? AND end_at > ?
-       ORDER BY room_key ASC`,
-    )
-    .all(now, now);
+  for (const roomKey of ['A', 'B', 'C', 'D']) {
+    const slot = findActiveSlot(roomKey, now);
+    if (slot) {
+      byRoom.set(roomKey, slot);
+    }
+  }
+
+  const activeSlots = [...byRoom.values()].sort((a, b) => a.room_key.localeCompare(b.room_key));
 
   return activeSlots.map((slot) => {
     const counts = db

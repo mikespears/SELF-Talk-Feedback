@@ -4,8 +4,9 @@ import rateLimit from 'express-rate-limit';
 import session from 'express-session';
 import { config, resolveCookieSecure } from './config.js';
 import { ensureStaffUser } from './auth.js';
-import { getDb } from './db.js';
+import { getDb, getMeta, setMeta } from './db.js';
 import { startMqttListener } from './mqttClient.js';
+import { rematchAllVotes, rematchUnmatchedVotes } from './voteService.js';
 import { migrateLegacyUptimeTopicIfNeeded, seedMqttSettingsFromEnvIfMissing } from './mqttSettings.js';
 import { seedTelegramSettingsFromEnvIfMissing } from './telegramSettings.js';
 import { seedPretalxSettingsFromEnvIfMissing } from './pretalxSettings.js';
@@ -69,7 +70,7 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({
     ok: true,
-    version: '1.6.0',
+    version: '1.6.3',
   });
 });
 
@@ -81,6 +82,28 @@ app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).send('Internal server error');
 });
+
+function rematchVotesWithGraceIfNeeded() {
+  const steps = [
+    { flag: 'votes_grace_rematch_v1', fn: rematchUnmatchedVotes },
+    { flag: 'votes_grace_rematch_10m', fn: rematchUnmatchedVotes },
+    { flag: 'votes_grace_rematch_10m_v2', fn: rematchAllVotes },
+    { flag: 'votes_grace_rematch_break_v1', fn: rematchAllVotes },
+  ];
+
+  for (const { flag, fn } of steps) {
+    if (getMeta(flag)) {
+      continue;
+    }
+    const result = fn();
+    setMeta(flag, new Date().toISOString());
+    if (result.updated > 0) {
+      console.log(
+        `Rematched ${result.updated} vote(s) with ${config.matchGraceMinutes}-minute grace window`,
+      );
+    }
+  }
+}
 
 async function bootstrap() {
   validateProductionConfig();
@@ -94,6 +117,7 @@ async function bootstrap() {
   seedMqttSettingsFromEnvIfMissing();
   seedTelegramSettingsFromEnvIfMissing();
   migrateLegacyUptimeTopicIfNeeded();
+  rematchVotesWithGraceIfNeeded();
   startMqttListener();
 
   if (getScheduleStats().slotCount === 0) {
