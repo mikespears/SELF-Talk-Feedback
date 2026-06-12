@@ -10,6 +10,7 @@ Web tool for **SouthEast Linux Fest** that listens for audience vote buttons ove
 - Staff authentication (session login)
 - Staff user management (create, rename, reset password, delete)
 - MQTT broker configuration from the staff UI (no `.env` edit required after first run)
+- Optional Telegram alerts when vote-box uptime sensors detect a reboot
 - Pretalx URL and event slug configuration from the staff UI
 - Live dashboard with recent votes and active talk counts
 - End-of-event staff report (HTML + CSV) including unmatched votes

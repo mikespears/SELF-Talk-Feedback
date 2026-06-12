@@ -2,7 +2,8 @@ import mqtt from 'mqtt';
 import { normalizeVotePayload, roomKeyFromTopic } from './config.js';
 import { getMqttSettings } from './mqttSettings.js';
 import { recordVote } from './voteService.js';
-import { recordUptimeReading, topicMatchesPattern } from './uptimeSensor.js';
+import { notifyRebootAlert } from './telegram.js';
+import { recordUptimeReading, sensorLabelFromTopic, topicMatchesPattern } from './uptimeSensor.js';
 
 let client;
 let activeSettings = null;
@@ -70,6 +71,13 @@ function handleUptimeMessage(topic, rawPayload, receivedAtIso) {
     console.warn(
       `Uptime reboot detected on ${topic}: ${result.previousValue} -> ${result.value}`,
     );
+    void notifyRebootAlert({
+      sensorLabel: sensorLabelFromTopic(topic),
+      topic,
+      previousValue: result.previousValue,
+      newValue: result.value,
+      detectedAtIso: receivedAtIso,
+    });
   }
 
   return true;

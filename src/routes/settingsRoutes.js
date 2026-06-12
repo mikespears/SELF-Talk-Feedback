@@ -10,6 +10,11 @@ import {
   savePretalxSettings,
   testPretalxConnection,
 } from '../pretalxSettings.js';
+import { sendTestTelegramMessage } from '../telegram.js';
+import {
+  getTelegramSettingsForDisplay,
+  saveTelegramSettings,
+} from '../telegramSettings.js';
 import { escapeHtml, formatDateTime, layout } from '../views.js';
 
 const router = express.Router();
@@ -106,6 +111,68 @@ function renderMqttSection({ settings, mqtt, csrfField }) {
     </section>`;
 }
 
+function renderTelegramSection({ settings, csrfField }) {
+  const configured = settings.enabled && settings.hasBotToken && Boolean(settings.chatId);
+
+  return `
+    <section class="settings-section panel" id="telegram">
+      <div class="settings-section-header">
+        <div>
+          <h2>Telegram alerts</h2>
+          <p class="muted">Send a Telegram message when an uptime sensor counter drops (device reboot).</p>
+        </div>
+      </div>
+
+      <section class="status-grid compact">
+        <div class="stat"><span>Status</span><strong class="${configured ? 'ok' : ''}">${configured ? 'Enabled' : 'Off'}</strong></div>
+        <div class="stat"><span>Chat ID</span><strong>${settings.chatId ? escapeHtml(settings.chatId) : '—'}</strong></div>
+        <div class="stat"><span>Bot token</span><strong>${settings.hasBotToken ? 'Saved' : '—'}</strong></div>
+        <div class="stat"><span>Last sent</span><strong>${formatDateTime(getMeta('telegram_last_sent_at'))}</strong></div>
+        <div class="stat"><span>Updated</span><strong>${formatDateTime(getMeta('telegram_settings_updated_at'))}</strong></div>
+      </section>
+
+      ${getMeta('telegram_last_error') ? `<p class="error banner">Last error: ${escapeHtml(getMeta('telegram_last_error'))}</p>` : ''}
+
+      <div class="grid two-col">
+        <div>
+          <h3>Connection</h3>
+          <form method="post" action="${BASE}/telegram" class="stack-form">
+            ${csrfField}
+            <label class="checkbox-label">
+              <input type="checkbox" name="enabled" value="1" ${settings.enabled ? 'checked' : ''}>
+              Enable Telegram reboot alerts
+            </label>
+            <label>
+              Bot token
+              <input type="password" name="botToken" autocomplete="new-password"
+                     placeholder="${settings.hasBotToken ? 'Leave blank to keep current token' : '123456789:ABCdefGHIjklMNOpqrsTUVwxyz'}">
+            </label>
+            <label>
+              Chat ID
+              <input type="text" name="chatId" value="${escapeHtml(settings.chatId)}"
+                     placeholder="-1001234567890 or @your_channel"
+                     spellcheck="false">
+            </label>
+            <div class="btn-row">
+              <button type="submit" class="btn btn-primary">Save Telegram settings</button>
+              <button type="submit" formaction="${BASE}/telegram/test" class="btn btn-secondary">Send test message</button>
+            </div>
+          </form>
+        </div>
+        <div>
+          <h3>Setup</h3>
+          <ol class="muted setup-steps">
+            <li>Message <code>@BotFather</code> on Telegram and create a bot. Copy the bot token.</li>
+            <li>Start a chat with your bot (or add it to a group/channel).</li>
+            <li>Use <code>@userinfobot</code> or <code>@getidsbot</code> to find your chat ID, or add the bot to a group and read updates from the Bot API.</li>
+            <li>Paste the token and chat ID here, enable alerts, and send a test message.</li>
+          </ol>
+          <p class="muted">Alerts are sent in addition to the staff dashboard banner.</p>
+        </div>
+      </div>
+    </section>`;
+}
+
 function renderPretalxSection({ settings, schedule, csrfField }) {
   return `
     <section class="settings-section panel" id="pretalx">
@@ -176,10 +243,11 @@ router.get('/', (req, res) => {
     <section class="toolbar">
       <div>
         <h1>Settings</h1>
-        <p class="muted">Configure MQTT vote capture and Pretalx schedule sync.</p>
+        <p class="muted">Configure MQTT vote capture, Telegram reboot alerts, and Pretalx schedule sync.</p>
       </div>
       <nav class="section-jumps">
         <a href="#mqtt">MQTT</a>
+        <a href="#telegram">Telegram</a>
         <a href="#pretalx">Pretalx</a>
       </nav>
     </section>
@@ -190,6 +258,10 @@ router.get('/', (req, res) => {
     ${renderMqttSection({
       settings: getMqttSettingsForDisplay(),
       mqtt: getMqttStatus(),
+      csrfField: req.csrfField,
+    })}
+    ${renderTelegramSection({
+      settings: getTelegramSettingsForDisplay(),
       csrfField: req.csrfField,
     })}
     ${renderPretalxSection({
@@ -234,6 +306,50 @@ router.post('/mqtt', express.urlencoded({ extended: false }), (req, res) => {
 router.post('/mqtt/reconnect', express.urlencoded({ extended: false }), (req, res) => {
   restartMqttListener();
   redirectWithMessage(res, { section: 'mqtt', success: 'MQTT listener restarted.' });
+});
+
+function parseTelegramForm(body) {
+  return {
+    enabled: body.enabled === '1',
+    botToken: body.botToken,
+    chatId: body.chatId,
+  };
+}
+
+router.post('/telegram', express.urlencoded({ extended: false }), (req, res) => {
+  const result = saveTelegramSettings(parseTelegramForm(req.body));
+  if (!result.ok) {
+    redirectWithMessage(res, { section: 'telegram', error: result.errors.join(' ') });
+    return;
+  }
+
+  redirectWithMessage(res, { section: 'telegram', success: 'Telegram settings saved.' });
+});
+
+router.post('/telegram/test', express.urlencoded({ extended: false }), async (req, res) => {
+  const result = saveTelegramSettings(parseTelegramForm(req.body));
+  if (!result.ok) {
+    redirectWithMessage(res, { section: 'telegram', error: result.errors.join(' ') });
+    return;
+  }
+
+  if (!result.settings.enabled) {
+    redirectWithMessage(res, {
+      section: 'telegram',
+      error: 'Enable Telegram alerts before sending a test message.',
+    });
+    return;
+  }
+
+  try {
+    await sendTestTelegramMessage(result.settings);
+    redirectWithMessage(res, { section: 'telegram', success: 'Test message sent to Telegram.' });
+  } catch (err) {
+    redirectWithMessage(res, {
+      section: 'telegram',
+      error: err instanceof Error ? err.message : 'Test message failed.',
+    });
+  }
 });
 
 function parsePretalxForm(body) {
